@@ -2,7 +2,7 @@ name: Discord Bot Sender Part1
 
 on:
   schedule:
-    - cron: "*/13 * * * *"   # tiap 15 menit (part1)
+    - cron: "*/13 * * * *"   # tiap 13 menit
   workflow_dispatch:
 
 jobs:
