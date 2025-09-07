@@ -2,7 +2,7 @@ name: Bot Ances & Surg
 
 on:
   schedule:
-    - cron: "*/13 * * * *"   # tiap 13 menit
+    - cron: "*/12 * * * *"   # tiap 13 menit
   workflow_dispatch:
 
 permissions:
