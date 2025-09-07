@@ -5,6 +5,9 @@ on:
     - cron: "*/13 * * * *"   # tiap 13 menit
   workflow_dispatch:
 
+permissions:
+      contents: write
+
 jobs:
   run-normal-part1:
     runs-on: ubuntu-latest
