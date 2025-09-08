@@ -4,7 +4,7 @@ import json
 import time
 import requests
 
-MESSAGE_DELAY_SECONDS = 10  # jeda antar pesan biar aman
+MESSAGE_DELAY_SECONDS = 7  # jeda antar pesan biar aman
 
 def load_config():
     """Baca config dari GitHub Secret"""
