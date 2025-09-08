@@ -1,113 +1,94 @@
-import json
 import os
 import sys
+import json
 import time
 import requests
 
-# --- Konstanta untuk konfigurasi ---
-MESSAGE_DELAY_SECONDS = 10  # delay antar channel biar aman
+MESSAGE_DELAY_SECONDS = 10  # jeda antar pesan biar aman
 
 def load_config():
-    """Ambil config dari Secrets (ENV DISCORD_CONFIG) atau dari file config.json lokal"""
-    config_env = os.getenv("DISCORD_CONFIG")
-    if config_env:
-        try:
-            return json.loads(config_env)
-        except json.JSONDecodeError:
-            print("[X] Error: Format JSON di Secrets DISCORD_CONFIG tidak valid.")
-            sys.exit(1)
-    elif os.path.exists("config.json"):
-        try:
-            with open("config.json", "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            print("[X] Error: Format JSON di file config.json tidak valid.")
-            sys.exit(1)
-    else:
-        print("[X] Error: Tidak ada config.json dan ENV DISCORD_CONFIG tidak ditemukan.")
+    """Baca config dari GitHub Secret"""
+    secret = os.environ.get("DISCORD_CONFIG")
+    if not secret:
+        print("[X] Secret DISCORD_CONFIG tidak ditemukan!")
+        sys.exit(1)
+    try:
+        return json.loads(secret)
+    except json.JSONDecodeError as e:
+        print(f"[X] Error parsing JSON di DISCORD_CONFIG: {e}")
         sys.exit(1)
 
 def load_last_index(filepath):
-    """Membuka dan membaca file indeks terakhir"""
     if not os.path.exists(filepath):
         return 0
     try:
         with open(filepath, "r") as f:
             return int(f.read().strip())
-    except (ValueError, TypeError):
+    except:
         return 0
 
 def save_next_index(filepath, current_index, total_accounts):
-    """Simpan indeks berikutnya (rolling round robin)"""
     next_index = (current_index + 1) % total_accounts
     with open(filepath, "w") as f:
         f.write(str(next_index))
-    print(f"[*] Indeks diperbarui → eksekusi berikutnya mulai dari akun index {next_index}")
+    print(f"[*] Indeks disimpan. Next run mulai dari {next_index}")
 
-def send_messages_for_account(account, index):
-    """Mengirim semua pesan dari 1 akun ke semua channel"""
+def send_messages(account):
     token = account.get("token")
     channels = account.get("channels", [])
 
     if not token or not channels:
-        print(f"[X] Akun index {index} dilewati (token / channel kosong).")
+        print("[X] Akun dilewati karena token / channel kosong.")
         return
 
     headers = {"Authorization": token}
-
-    print(f"\n--- [Akun index {index}] Token ...{token[-4:]} ---")
+    print(f"\n--- Akun Token: ...{token[-4:]} ---")
 
     for ch in channels:
-        channel_id = ch.get("id")
-        message_content = ch.get("message")
-
-        if not channel_id or not message_content:
-            print(f"[!] Channel kosong dilewati (akun index {index})")
+        cid = ch.get("id")
+        msg = ch.get("message")
+        if not cid or not msg:
             continue
 
         try:
-            response = requests.post(
-                f"https://discord.com/api/v9/channels/{channel_id}/messages",
+            r = requests.post(
+                f"https://discord.com/api/v9/channels/{cid}/messages",
                 headers=headers,
-                json={"content": message_content},
+                json={"content": msg},
                 timeout=15
             )
-
-            if response.status_code in [200, 201]:
-                print(f"[✓] Berhasil kirim ke channel {channel_id}")
+            if r.status_code in [200, 201]:
+                print(f"[✓] Berhasil ke {cid}")
             else:
-                print(f"[X] Gagal kirim ke channel {channel_id} | Status {response.status_code} | Respon: {response.text}")
+                print(f"[X] Gagal {cid} | {r.status_code} | {r.text}")
 
-            time.sleep(MESSAGE_DELAY_SECONDS)
+        except Exception as e:
+            print(f"[X] Error {cid}: {e}")
 
-        except requests.exceptions.RequestException as e:
-            print(f"[X] Error koneksi: {e}")
+        time.sleep(MESSAGE_DELAY_SECONDS)
 
 def main():
     if len(sys.argv) < 2:
-        print("Penggunaan: python bot_sender.py <last_index.txt>")
+        print("Usage: python bot_sender.py <last_index.txt>")
         sys.exit(1)
 
-    last_index_filepath = sys.argv[1]
-
+    last_index_file = sys.argv[1]
     config = load_config()
     accounts = config.get("accounts", [])
 
     if not accounts:
-        print("[X] Tidak ada akun di config.")
+        print("[X] Tidak ada akun ditemukan di config.")
         sys.exit(1)
 
-    last_index = load_last_index(last_index_filepath)
+    last_index = load_last_index(last_index_file)
     current_index = last_index % len(accounts)
 
-    print(f"[*] Total akun: {len(accounts)}")
-    print(f"[*] Last index: {last_index} → Jalankan akun index {current_index}")
+    print(f"[*] Total akun: {len(accounts)} | Mulai dari index {current_index}")
 
-    account_to_use = accounts[current_index]
-    send_messages_for_account(account_to_use, current_index)
+    send_messages(accounts[current_index])
 
-    save_next_index(last_index_filepath, current_index, len(accounts))
-    print("\n[+] Selesai.")
+    save_next_index(last_index_file, current_index, len(accounts))
+    print("[+] Selesai.")
 
 if __name__ == "__main__":
     main()
