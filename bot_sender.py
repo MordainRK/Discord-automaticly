@@ -3,54 +3,66 @@ import os
 import sys
 import time
 import requests
-from datetime import datetime
 
 # --- Konstanta untuk konfigurasi ---
-MESSAGE_DELAY_SECONDS = 10  # Jeda antar pesan
+MESSAGE_DELAY_SECONDS = 10  # delay antar channel biar aman
 
-def load_config(filepath):
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print(f"[X] File konfigurasi tidak ditemukan: {filepath}")
-        sys.exit(1)
-    except json.JSONDecodeError:
-        print(f"[X] Format JSON salah di file: {filepath}")
+def load_config():
+    """Ambil config dari Secrets (ENV DISCORD_CONFIG) atau dari file config.json lokal"""
+    config_env = os.getenv("DISCORD_CONFIG")
+    if config_env:
+        try:
+            return json.loads(config_env)
+        except json.JSONDecodeError:
+            print("[X] Error: Format JSON di Secrets DISCORD_CONFIG tidak valid.")
+            sys.exit(1)
+    elif os.path.exists("config.json"):
+        try:
+            with open("config.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print("[X] Error: Format JSON di file config.json tidak valid.")
+            sys.exit(1)
+    else:
+        print("[X] Error: Tidak ada config.json dan ENV DISCORD_CONFIG tidak ditemukan.")
         sys.exit(1)
 
 def load_last_index(filepath):
+    """Membuka dan membaca file indeks terakhir"""
     if not os.path.exists(filepath):
         return 0
     try:
         with open(filepath, "r") as f:
             return int(f.read().strip())
-    except:
+    except (ValueError, TypeError):
         return 0
 
-def save_next_index(filepath, current_index, num_accounts):
-    next_index = (current_index + 1) % num_accounts
+def save_next_index(filepath, current_index, total_accounts):
+    """Simpan indeks berikutnya (rolling round robin)"""
+    next_index = (current_index + 1) % total_accounts
     with open(filepath, "w") as f:
         f.write(str(next_index))
-    print(f"[*] Indeks diperbarui. Next run mulai dari index: {next_index}")
+    print(f"[*] Indeks diperbarui → eksekusi berikutnya mulai dari akun index {next_index}")
 
-def send_messages_for_account(account, account_index):
+def send_messages_for_account(account, index):
+    """Mengirim semua pesan dari 1 akun ke semua channel"""
     token = account.get("token")
     channels = account.get("channels", [])
-    
+
     if not token or not channels:
-        print(f"[X] Akun index {account_index} dilewati (token/channels kosong)")
+        print(f"[X] Akun index {index} dilewati (token / channel kosong).")
         return
 
-    headers = {"Authorization": f"{token}"}
-    print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🔑 Akun index {account_index} (Token ...{token[-4:]})")
+    headers = {"Authorization": token}
+
+    print(f"\n--- [Akun index {index}] Token ...{token[-4:]} ---")
 
     for ch in channels:
         channel_id = ch.get("id")
         message_content = ch.get("message")
-        
+
         if not channel_id or not message_content:
-            print(f"[!] Channel dilewati (ID/Pesan kosong) di akun {account_index}")
+            print(f"[!] Channel kosong dilewati (akun index {index})")
             continue
 
         try:
@@ -60,52 +72,42 @@ def send_messages_for_account(account, account_index):
                 json={"content": message_content},
                 timeout=15
             )
-            
+
             if response.status_code in [200, 201]:
-                print(f"✅ Berhasil -> Channel {channel_id}")
-            elif response.status_code == 401:
-                print(f"❌ Token Invalid -> Akun {account_index}")
-            elif response.status_code == 403:
-                print(f"❌ Tidak ada izin kirim -> Channel {channel_id}")
-            elif response.status_code == 429:
-                retry_after = response.json().get("retry_after", 5)
-                print(f"⚠️ Rate Limit -> Tunggu {retry_after} detik")
-                time.sleep(retry_after)
+                print(f"[✓] Berhasil kirim ke channel {channel_id}")
             else:
-                print(f"❌ Gagal -> Status {response.status_code}, Respon: {response.text}")
+                print(f"[X] Gagal kirim ke channel {channel_id} | Status {response.status_code} | Respon: {response.text}")
 
             time.sleep(MESSAGE_DELAY_SECONDS)
 
         except requests.exceptions.RequestException as e:
-            print(f"[X] Error request ke Discord: {e}")
+            print(f"[X] Error koneksi: {e}")
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python bot_sender.py <config.json> <last_index.txt>")
+    if len(sys.argv) < 2:
+        print("Penggunaan: python bot_sender.py <last_index.txt>")
         sys.exit(1)
 
-    config_filepath = sys.argv[1]
-    last_index_filepath = sys.argv[2]
+    last_index_filepath = sys.argv[1]
 
-    config = load_config(config_filepath)
+    config = load_config()
     accounts = config.get("accounts", [])
 
     if not accounts:
-        print("[X] Tidak ada akun di config.json")
+        print("[X] Tidak ada akun di config.")
         sys.exit(1)
 
     last_index = load_last_index(last_index_filepath)
-    num_accounts = len(accounts)
+    current_index = last_index % len(accounts)
 
-    current_account_index = last_index % num_accounts
-    print(f"[*] Last index: {last_index}, Total akun: {num_accounts}, Run sekarang: index {current_account_index}")
+    print(f"[*] Total akun: {len(accounts)}")
+    print(f"[*] Last index: {last_index} → Jalankan akun index {current_index}")
 
-    account_to_use = accounts[current_account_index]
-    send_messages_for_account(account_to_use, current_account_index)
+    account_to_use = accounts[current_index]
+    send_messages_for_account(account_to_use, current_index)
 
-    save_next_index(last_index_filepath, current_account_index, num_accounts)
-
-    print("\n[+] Selesai.\n")
+    save_next_index(last_index_filepath, current_index, len(accounts))
+    print("\n[+] Selesai.")
 
 if __name__ == "__main__":
     main()
