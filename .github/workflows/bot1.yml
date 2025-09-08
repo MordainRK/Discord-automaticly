@@ -5,6 +5,9 @@ on:
     - cron: "*/40 * * * *"   # tiap 40 menit
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   run-slow:
     runs-on: ubuntu-latest
@@ -16,11 +19,11 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # ambil config dari secret DISCORD_CONFIG1 dan simpan ke file
-      - name: Load config from secret
-        run: echo "${{ secrets.DISCORD_CONFIG1 }}" > config_slow.json
-
-      - run: python bot_sender.py config_slow.json last_index_slow.txt
+      - name: Jalankan bot slow
+        env:
+          DISCORD_CONFIG: ${{ secrets.DISCORD_CONFIG1 }}
+        run: |
+          python bot_sender.py last_index_slow.txt
 
       - name: Save last index
         run: |
