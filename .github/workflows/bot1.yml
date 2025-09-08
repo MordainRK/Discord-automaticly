@@ -1,1 +1,32 @@
+name: Discord Bot Sender Slow
 
+on:
+  schedule:
+    - cron: "*/40 * * * *"   # tiap 40 menit
+  workflow_dispatch:
+
+jobs:
+  run-slow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - run: pip install -r requirements.txt
+
+      # ambil config dari secret DISCORD_CONFIG1 dan simpan ke file
+      - name: Load config from secret
+        run: echo "${{ secrets.DISCORD_CONFIG1 }}" > config_slow.json
+
+      - run: python bot_sender.py config_slow.json last_index_slow.txt
+
+      - name: Save last index
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git pull --rebase --autostash origin main || true
+          git add last_index_slow.txt
+          git commit -m "Update last index (slow)" || echo "No changes"
+          git push --force
