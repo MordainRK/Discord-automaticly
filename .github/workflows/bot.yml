@@ -1,15 +1,15 @@
-name: Bot Ances & Surg
+name: Discord Bot Sender
 
 on:
   schedule:
-    - cron: "*/12 * * * *"   # tiap 13 menit
+    - cron: "*/12 * * * *"   # tiap 12 menit
   workflow_dispatch:
 
 permissions:
-      contents: write
+  contents: write
 
 jobs:
-  run-normal-part1:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -17,8 +17,14 @@ jobs:
         with:
           python-version: "3.10"
       - run: pip install -r requirements.txt
-      - run: python bot_sender.py config.json last_index.txt
-      - name: Save last index
+
+      - name: Jalankan bot
+        env:
+          DISCORD_CONFIG: ${{ secrets.DISCORD_CONFIG }}
+        run: |
+          python bot_sender.py last_index.txt
+
+      - name: Simpan last index
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
